@@ -67,9 +67,20 @@ const TAIL_ARRIVES_BY = 0.92;
 const FILM_END = 0.7;
 /** Where the film starts settling back to a backdrop. */
 const SETTLE_AT = 0.8;
-/** What it settles to, once it is behind the reading content. */
-const BACKDROP_ALPHA = 0.16;
-const BACKDROP_BLUR = 7;
+/**
+ * How present the film is once it is behind reading content.
+ *
+ * ONE attenuation, not two. This originally faded the band to 0.16 AND laid a
+ * veil at 0.82 over it, which multiplies: 0.16 x 0.18 leaves 2.9% of the film
+ * reaching the screen. Measured, that came to 0.28 luma of visible structure
+ * in one place and 0.00 in another — the film was not subtle, it was gone.
+ *
+ * So the band now always paints at full strength and the veil alone decides
+ * how much of it survives. Presence is 1 - VEIL_MAX, and it is one number to
+ * turn rather than two that fight.
+ */
+const VEIL_MAX = 0.68;
+const BACKDROP_BLUR = 4;
 
 const frameUrl = (seq: Seq, i: number) =>
   `/media/hero/${seq.dir}/f${String(i).padStart(3, '0')}.webp`;
@@ -226,18 +237,19 @@ export default function FilmBackdrop() {
       const heroT = clamp01(y / heroEnd);
       const settle = hasHero ? clamp01((heroT - SETTLE_AT) / (1 - SETTLE_AT)) : 1;
       const eased = settle * settle;   // hold presence, then let go
-      const alpha = 1 - (1 - BACKDROP_ALPHA) * eased;
       const blur = BACKDROP_BLUR * eased;
       const scale = 1 + 0.07 * clamp01(heroT / SETTLE_AT) + 0.07 * eased;
 
+      // The band always paints at full strength — see VEIL_MAX. Only the blur
+      // and the push-in are choreographed here.
       if (band.current) {
-        band.current.style.opacity = String(alpha);
         band.current.style.filter = `${GRADES[FILM]} blur(${blur.toFixed(1)}px)`;
         band.current.style.transform = `scale(${scale.toFixed(3)})`;
       }
-      // a veil under the content, arriving with the settle, so text never has
-      // to hold contrast against moving line-work
-      if (veil.current) veil.current.style.opacity = String(0.82 * eased);
+      // The veil is the single control over how much film survives behind the
+      // reading content, so text never has to hold contrast against bright
+      // moving line-work.
+      if (veil.current) veil.current.style.opacity = String(VEIL_MAX * eased);
     };
 
     const onScroll = () => { if (!raf) raf = requestAnimationFrame(tick); };
@@ -282,8 +294,9 @@ export default function FilmBackdrop() {
       {/* pulls the film's ground the rest of the way onto brand navy */}
       <div className="absolute inset-0 bg-ground/26" />
 
-      {/* and the veil that arrives once content starts scrolling over it */}
-      <div ref={veil} className="absolute inset-0 bg-ground opacity-0" />
+      {/* and the veil that arrives once content starts scrolling over it —
+          the single control over the film's presence, read by scrub-check */}
+      <div ref={veil} data-hero-veil className="absolute inset-0 bg-ground opacity-0" />
     </div>
   );
 }

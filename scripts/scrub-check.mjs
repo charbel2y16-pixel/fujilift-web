@@ -1,13 +1,18 @@
 import { chromium } from 'playwright-core';
 
 /**
- * Reports how the hero film maps onto scroll distance, and checks the two
- * things that have to be true for the ride to read as one move:
+ * Reports how the film maps onto scroll distance across the whole page, and
+ * checks what has to be true for it to read as one continuous move:
  *
- *   1. the film is on its last frame BEFORE the pin releases — otherwise the
- *      next section slides up over a car that is still climbing;
- *   2. the dissolve (blur up, opacity down) only starts once the film is
- *      finished, and is complete by the time the pin lets go.
+ *   1. the ride spends its share of the frames on the hero pin, at full
+ *      density, so the masthead does not step;
+ *   2. it settles to a veiled backdrop by the time the pin lets go, so copy
+ *      never has to hold contrast against bright moving line-work;
+ *   3. it keeps advancing below the hero and completes before the footer;
+ *   4. it is still VISIBLE once settled — the check that matters most, and the
+ *      one this file used to lack. Everything else passed while the film was
+ *      reaching the screen at 2.9%: painting correctly, advancing frame by
+ *      frame, and invisible.
  *
  *   node scripts/scrub-check.mjs <url> [--mobile]
  */
@@ -81,26 +86,36 @@ for (let y = 0; y <= MAX; y += STEP) {
     const band = document.querySelector('[data-hero-film]');
     const cs = getComputedStyle(band);
     const blur = /blur\(([\d.]+)px\)/.exec(cs.filter);
+    /**
+     * Presence is the veil's, not the band's. The band paints at full strength
+     * always; the veil is the single thing deciding how much of it survives.
+     * Reading the band's opacity here measured a number that no longer moves.
+     */
+    const veilEl = document.querySelector('[data-hero-veil]');
+    const veil = veilEl ? +getComputedStyle(veilEl).opacity : 0;
     return {
       frame: Number(c?.dataset.frame ?? -1),
       heroTop: Math.round(hero.getBoundingClientRect().top),
       copy: +getComputedStyle(document.querySelector('[data-hero-copy]')).opacity,
       blur: blur ? +blur[1] : 0,
       alpha: +cs.opacity,
+      veil,
+      /** what actually reaches the screen */
+      present: (1 - veil) * (+cs.opacity),
     };
   });
   rows.push({ scroll: y, ...s });
 }
 
 const w = (v, n) => String(v).padStart(n);
-console.log('\n scroll | frame | % film | hero top | pinned | copy a | blur | film a');
-console.log('--------+-------+--------+----------+--------+--------+------+-------');
+console.log('\n scroll | frame | % film | hero top | pinned | copy a | blur | veil | shows');
+console.log('--------+-------+--------+----------+--------+--------+------+------+------');
 for (const r of rows) {
   const pinned = Math.abs(r.heroTop) <= 1;
   console.log(
     ` ${w(r.scroll, 6)} | ${w(r.frame, 5)} | ${w(((r.frame / LAST) * 100).toFixed(0) + '%', 6)} |` +
     ` ${w(r.heroTop, 8)} | ${w(pinned ? 'yes' : '-', 6)} | ${w(r.copy.toFixed(2), 6)} |` +
-    ` ${w(r.blur.toFixed(1), 4)} | ${w(r.alpha.toFixed(2), 6)}`,
+    ` ${w(r.blur.toFixed(1), 4)} | ${w(r.veil.toFixed(2), 4)} | ${w((r.present * 100).toFixed(0) + '%', 5)}`,
   );
 }
 
@@ -117,14 +132,16 @@ for (const r of rows) {
  * old behaviour were reporting on themselves rather than on the page.
  */
 const HERO_SHARE = 0.85;
-const BACKDROP_ALPHA = 0.16;
+const VEIL_MAX = 0.68;
+/** the film must still be visible once settled, not merely present in the DOM */
+const MIN_PRESENT = 0.15;
 
 const pinnedRows = rows.filter((r) => Math.abs(r.heroTop) <= 1);
 const pinReleases = pinnedRows.length ? pinnedRows[pinnedRows.length - 1].scroll + STEP : 0;
 const atRelease = pinnedRows.length ? pinnedRows[pinnedRows.length - 1] : null;
 const last = rows[rows.length - 1];
 const filmDone = rows.find((r) => r.frame >= LAST);
-const settled = rows.find((r) => r.alpha <= BACKDROP_ALPHA + 0.06 && r.blur > 3);
+const settled = rows.find((r) => r.veil > 0.5 && r.blur > 2);
 
 const fails = [];
 const ok = (cond, msg) => {
@@ -147,6 +164,17 @@ ok(
   `keeps advancing below the hero — frame ${atRelease?.frame} at the pin, ${last?.frame} at the foot`,
 );
 ok(!!filmDone, `reaches its last frame (${LAST}) by the end of the page`);
+/**
+ * The one this file could not previously have caught. Every other check passed
+ * while the film was reaching the screen at 2.9% — present in the DOM, painting
+ * correctly, advancing frame by frame, and invisible. Assert that it can
+ * actually be seen once it settles, not merely that it exists.
+ */
+ok(
+  !!last && last.present >= MIN_PRESENT,
+  `still visible once settled — ${(last?.present * 100).toFixed(0)}% of the film reaches the screen ` +
+  `(min ${(MIN_PRESENT * 100).toFixed(0)}%)`,
+);
 /**
  * Assert the invariant, not the filename. Which cut the hero rides is a
  * decision the component makes and is allowed to change; what must never
