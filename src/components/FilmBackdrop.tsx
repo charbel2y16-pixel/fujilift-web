@@ -37,6 +37,16 @@ type Seq = { count: number; dir: string };
  */
 export const FILM: 'house' | 'alt' = 'alt';
 
+/**
+ * Both cuts must come from the same film.
+ *
+ * They did not. `lg` followed FILM while `sm` was hardcoded to a sequence
+ * decoded from the house master, so with FILM='alt' a phone showed the old
+ * film — and, worse, wore the alt grade while doing it. That grade is solved
+ * for the generated render's ground at luma 25; the house render's ground is
+ * luma 82, so it came out about three times too bright. Washed out and plainly
+ * wrong, and invisible from a desktop browser.
+ */
 const SEQ: { lg: Seq; sm: Seq } = {
   lg: FILM === 'alt' ? { count: 160, dir: 'seq-alt' } : { count: 128, dir: 'seq' },
   sm: { count: 96, dir: 'seq-sm' },
@@ -95,6 +105,17 @@ const BACKDROP_BLUR = 4;
 const frameUrl = (seq: Seq, i: number) =>
   `/media/hero/${seq.dir}/f${String(i).padStart(3, '0')}.webp`;
 
+/**
+ * The still, taken from whichever film is riding — one per breakpoint.
+ *
+ * A single poster cannot serve both: pointing it at SEQ.lg made every phone
+ * fetch a 1400px frame out of a sequence it never rides, so mobile pulled down
+ * two cuts instead of one. A <picture> lets each width ask for exactly the cut
+ * it is about to scrub.
+ */
+const POSTER_LG = FILM === 'alt' ? frameUrl(SEQ.lg, 0) : '/media/hero/hero-poster.webp';
+const POSTER_SM = FILM === 'alt' ? frameUrl(SEQ.sm, 0) : '/media/hero/hero-poster.webp';
+
 /** Paints the still sequence into a canvas, cover-fitted and DPR-aware. */
 function createFilm(canvas: HTMLCanvasElement, seq: Seq) {
   const FRAMES = seq.count;
@@ -113,10 +134,26 @@ function createFilm(canvas: HTMLCanvasElement, seq: Seq) {
     return -1;
   };
 
-  /** Cover-fit one frame over the whole canvas. */
+  /**
+   * Fit one frame to the canvas.
+   *
+   * Cover on a landscape canvas, but fill the WIDTH on a portrait one and let
+   * it band. The film is 16:9 and a phone held upright is roughly 9:19, so
+   * covering that means scaling by height: on a 390pt screen the frame came
+   * out 2.7x upscaled and cropped to a narrow vertical slice of the shaft.
+   * Soft, oddly framed, and four times the pixels to repaint every frame.
+   *
+   * Filling the width instead draws it at 0.87x — downscaled, so genuinely
+   * sharp — as a 16:9 band with the page ground above and below it. Which is
+   * exactly what the hero did on phones before the film moved behind the whole
+   * page: "below md it becomes its own uncropped band".
+   */
   const drawCover = (img: HTMLImageElement, alpha: number) => {
     const cw = canvas.width, ch = canvas.height;
-    const s = Math.max(cw / img.naturalWidth, ch / img.naturalHeight);
+    const portrait = ch > cw * 1.1;
+    const s = portrait
+      ? cw / img.naturalWidth
+      : Math.max(cw / img.naturalWidth, ch / img.naturalHeight);
     const w = img.naturalWidth * s, h = img.naturalHeight * s;
     ctx!.globalAlpha = alpha;
     ctx!.drawImage(img, (cw - w) / 2, (ch - h) / 2, w, h);
@@ -357,12 +394,20 @@ export default function FilmBackdrop() {
         className="absolute inset-0 will-change-[transform,filter,opacity]"
         style={{ filter: GRADES[FILM] }}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/media/hero/hero-poster.webp"
-          alt=""
-          className="absolute inset-0 h-full w-full object-cover"
-        />
+        {/* The still under everything — the no-JS and reduced-motion state.
+            It follows FILM: a poster from one film wearing the other's grade
+            is the same bug as the mobile sequence had, and just as invisible
+            until you look at it on the right device. object-contain below md
+            so it bands exactly like the canvas does. */}
+        <picture>
+          <source media="(min-width: 768px)" srcSet={POSTER_LG} />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={POSTER_SM}
+            alt=""
+            className="absolute inset-0 h-full w-full object-contain md:object-cover"
+          />
+        </picture>
         <canvas
           ref={canvas}
           className="absolute inset-0 h-full w-full opacity-0 transition-opacity duration-500"
