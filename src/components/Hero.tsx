@@ -194,14 +194,15 @@ export default function Hero() {
           className="pointer-events-none absolute inset-x-0 top-0 h-[54%]
                      bg-gradient-to-b from-ground via-ground/70 to-transparent"
         />
-        {/* And one at the foot, so the captions have something to sit on. It
-            reaches to 46% because the captions now sit higher and run to three
-            lines at d2 — at the old 26% the top of a tall caption cleared the
-            scrim entirely and sat on bare line-work. */}
+        {/* And one at the foot, so the captions have something to sit on.
+            It is a band rather than a ramp — see .hero-foot-scrim. Anchored at
+            the bottom edge it was strongest exactly where the hero ends, and
+            since the film behind the page is one fixed layer that is identical
+            either side of that edge, the scrim stopping dead there read as a
+            horizontal seam between the hero and the section below it. */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 bottom-0 h-[46%]
-                     bg-gradient-to-t from-ground/85 via-ground/55 to-transparent"
+          className="hero-foot-scrim pointer-events-none absolute inset-x-0 bottom-0 h-[62%]"
         />
 
         {/* ---- instrumentation: only where there is room for it ------------- */}

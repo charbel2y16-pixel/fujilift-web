@@ -382,6 +382,32 @@
   }
   .spec-row--on-navy { }   /* no-op: see .eyebrow--on-navy */
 
+  /* --- hero foot scrim --------------------------------------------------- */
+  /* The ground under the captions.
+     It has to fade back OUT before the hero's bottom edge. The film behind the
+     page is one fixed layer, so it is identical either side of that edge —
+     which means anything the hero adds on top of it stops dead there and shows
+     as a horizontal seam. A gradient anchored at the bottom (`from-ground/85`)
+     was at its strongest exactly where it was about to disappear.
+     So this is a band, not a ramp: nothing at the edge, strongest behind the
+     caption block a fifth to a half of the way up, nothing again above it. */
+  .hero-foot-scrim {
+    background: linear-gradient(
+      to top,
+      /* Held at nothing for the first stop, not merely starting at nothing.
+         Ramping straight off zero still leaves a few percent of ground in the
+         last strip above the edge against none below it, which is a measurable
+         step even though both ends of the gradient read as transparent. The
+         hold puts the whole ramp clear of the boundary. */
+      transparent 0%,
+      transparent 7%,
+      color-mix(in srgb, var(--color-ground) 46%, transparent) 16%,
+      color-mix(in srgb, var(--color-ground) 84%, transparent) 30%,
+      color-mix(in srgb, var(--color-ground) 72%, transparent) 48%,
+      transparent 76%
+    );
+  }
+
   /* --- hero scroll cue --------------------------------------------------- */
   /* A tick falling down a hairline — the only thing on the hero that moves
      before you scroll, and it stops the moment you do. */

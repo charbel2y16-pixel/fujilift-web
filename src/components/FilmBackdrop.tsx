@@ -13,16 +13,19 @@ import { prefersReducedMotion } from '@/lib/gsap';
  * behind it. BuildingShaft's rails and floor plates sit on the same plane.
  *
  * HOW SCROLL MAPS TO FRAMES. Not uniformly, and deliberately. The hero pin is
- * ~6,300px of a ~15,000px page, so a straight document-progress mapping would
- * hand the hero only 40% of the frames and the ride would step visibly. So the
- * mapping is piecewise: the hero pin gets the ride at full density, and the
- * remaining frames spread across everything below it. That tail is enormously
- * coarse — a frame every few hundred pixels — which would be unacceptable for
- * a foreground and is invisible at a backdrop's opacity behind a blur.
+ * ~2,250px of an ~11,400px page. It takes HERO_SHARE of the frames — roughly
+ * its share of the page, so the masthead is neither starved nor greedy — and
+ * the rest spread across everything below it. The tail is coarse, a frame
+ * every few hundred pixels, which would be unacceptable for a foreground and
+ * is invisible at a backdrop's opacity behind a blur.
  *
  * The reward is that the last of the climb arrives as you reach the footer:
  * you ride up the shaft through the hero and are still arriving at the machine
  * room when you get to the bottom of the page.
+ *
+ * Frames are cross-faded rather than snapped to, and the painted position is
+ * chased on rAF rather than driven straight off scroll — see paint() and
+ * chase(). Between them, the frame count stops being something you can see.
  */
 
 /** Two cuts of the same film — see the note on the alt grade below. */
@@ -110,17 +113,47 @@ function createFilm(canvas: HTMLCanvasElement, seq: Seq) {
     return -1;
   };
 
-  const paint = (i: number, force = false) => {
-    if (!ctx || disposed) return;
-    const idx = nearest(i);
-    if (idx < 0 || (!force && idx === current)) return;
-    current = idx;
-    canvas.dataset.frame = String(idx);   // read by scripts/scrub-check.mjs
-    const img = imgs[idx]!;
+  /** Cover-fit one frame over the whole canvas. */
+  const drawCover = (img: HTMLImageElement, alpha: number) => {
     const cw = canvas.width, ch = canvas.height;
     const s = Math.max(cw / img.naturalWidth, ch / img.naturalHeight);
     const w = img.naturalWidth * s, h = img.naturalHeight * s;
-    ctx.drawImage(img, (cw - w) / 2, (ch - h) / 2, w, h);
+    ctx!.globalAlpha = alpha;
+    ctx!.drawImage(img, (cw - w) / 2, (ch - h) / 2, w, h);
+    ctx!.globalAlpha = 1;
+  };
+
+  /**
+   * Paint a FRACTIONAL frame by cross-fading the two it falls between.
+   *
+   * This is what makes a frame sequence read as motion rather than as a
+   * slideshow. Snapping to the nearest frame means the film only changes once
+   * every scroll-distance-per-frame — at 160 frames over an 11,000px page that
+   * is one change per ~70px, which is plainly steppy no matter how smooth the
+   * scrolling itself is. Blending the neighbour on top at the fractional part
+   * makes the in-between positions real, so the shaft moves continuously and
+   * the frame count stops being something you can see.
+   *
+   * It costs one extra drawImage, and only while the two differ.
+   */
+  const paint = (at: number, force = false) => {
+    if (!ctx || disposed) return;
+    if (!force && Math.abs(at - current) < 0.004) return;
+
+    const lo = Math.floor(at);
+    const frac = at - lo;
+    const a = nearest(lo);
+    if (a < 0) return;
+    current = at;
+    canvas.dataset.frame = String(Math.round(at));   // read by scripts/scrub-check.mjs
+
+    drawCover(imgs[a]!, 1);
+    if (frac > 0.01 && lo + 1 < FRAMES) {
+      const b = nearest(lo + 1);
+      // only blend a genuinely different frame — while the sequence is still
+      // streaming, nearest() can hand back the one already painted
+      if (b >= 0 && b !== a) drawCover(imgs[b]!, frac);
+    }
   };
 
   const resize = () => {
@@ -133,6 +166,9 @@ function createFilm(canvas: HTMLCanvasElement, seq: Seq) {
   };
 
   let wanted = 0;
+  /** where the canvas actually is, chased toward `wanted` on rAF */
+  let shown = 0;
+  let raf = 0;
   let next = 0;
   const pump = () => {
     if (disposed || next >= FRAMES) return;
@@ -146,7 +182,7 @@ function createFilm(canvas: HTMLCanvasElement, seq: Seq) {
         resize();
         canvas.style.opacity = '1';
       }
-      paint(wanted);
+      paint(shown, true);   // a newly arrived frame may beat what is showing
       pump();
     };
     img.src = frameUrl(seq, idx);
@@ -161,13 +197,40 @@ function createFilm(canvas: HTMLCanvasElement, seq: Seq) {
 
   window.addEventListener('resize', resize);
 
+  /**
+   * Ease the painted position toward the wanted one on its own rAF.
+   *
+   * Scroll arrives in lumps — a wheel notch, a trackpad flick, a touch move —
+   * and painting straight from it inherits that lumpiness even with the frames
+   * blended. Chasing the target on a frame loop turns each lump into a short
+   * glide, and because it runs on rAF the film keeps moving between scroll
+   * events instead of only when one lands.
+   *
+   * The loop stops itself once it arrives, so a still page costs nothing.
+   */
+  const chase = () => {
+    raf = 0;
+    if (disposed) return;
+    const gap = wanted - shown;
+    if (Math.abs(gap) < 0.01) {
+      shown = wanted;
+      paint(shown);
+      return;
+    }
+    shown += gap * 0.22;
+    paint(shown);
+    raf = requestAnimationFrame(chase);
+  };
+
   return {
+    /** progress 0..1 */
     seek(t: number) {
-      wanted = Math.max(0, Math.min(FRAMES - 1, Math.round(t * (FRAMES - 1))));
-      paint(wanted);
+      wanted = Math.max(0, Math.min(FRAMES - 1, t * (FRAMES - 1)));
+      if (!raf) raf = requestAnimationFrame(chase);
     },
     dispose() {
       disposed = true;
+      if (raf) cancelAnimationFrame(raf);
       window.removeEventListener('resize', resize);
     },
   };
