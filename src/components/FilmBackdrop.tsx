@@ -59,12 +59,19 @@ const GRADES = {
   alt: 'contrast(0.97) brightness(1.1) saturate(0.85)',
 } as const;
 
-/** Share of the film spent on the hero pin; the rest carries the page. */
-const HERO_SHARE = 0.85;
+/**
+ * Share of the film spent on the hero pin; the rest carries the page.
+ *
+ * This was 0.85, against a pin worth seven screens — so the film was all but
+ * over before you reached a word of content, and the pin was most of the
+ * scrolling on the site. The pin is now worth 2.5 screens and takes about a
+ * fifth of the frames, which is roughly its share of the page. The ride reads
+ * as an opening rather than the main event, and the climb genuinely unfolds
+ * from the masthead to the footer instead of finishing in the first section.
+ */
+const HERO_SHARE = 0.3;
 /** How far down the remaining scroll the climb has fully arrived. */
 const TAIL_ARRIVES_BY = 0.92;
-/** Where in the hero pin the ride finishes, leaving a beat before it settles. */
-const FILM_END = 0.7;
 /** Where the film starts settling back to a backdrop. */
 const SETTLE_AT = 0.8;
 /**
@@ -221,7 +228,15 @@ export default function FilmBackdrop() {
          */
         t = clamp01(y / docMax);
       } else if (y <= heroEnd) {
-        t = clamp01(y / heroEnd / FILM_END) * HERO_SHARE;
+        /**
+         * Linear across the whole pin, with no hold at the end. This used to
+         * finish the hero's share at 70% of the pin and sit still for the
+         * remaining 30% — invisible when the pin was seven screens, but at two
+         * and a half it is a dead stop right where the ride should be handing
+         * off to the page. Ending exactly on HERO_SHARE means the tail picks
+         * up from the same value and the two read as one move.
+         */
+        t = clamp01(y / heroEnd) * HERO_SHARE;
       } else {
         // Land the last frame a little before the true bottom. Mapping the
         // tail onto the full remaining scroll means the climb only completes

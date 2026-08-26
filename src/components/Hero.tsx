@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef } from 'react';
+import { Fragment, useRef } from 'react';
 import { motion } from 'framer-motion';
 import Logo from './Logo';
 import { CTA, Eyebrow } from './ui';
@@ -30,20 +30,26 @@ import { gsap, ScrollTrigger, useGsap, SCROLL_OK, TOUCH_SCROLL_OK } from '@/lib/
 /**
  * How the pin is divided.
  *
- * The ride is done at 70%, which leaves nearly a third of the pin still to
- * scroll after the last of it lands. 70–80% holds clean, and the final fifth
- * is where FilmBackdrop settles the film back to a backdrop and brings up the
- * veil, so the copy below never has to hold contrast against moving line-work.
+ * The pin is worth 2.5 screens now rather than seven. The film no longer
+ * finishes inside it — it takes about a fifth of the frames here and the rest
+ * unfold across the page below. FILM_END is what the travel rail fills to;
+ * SETTLE_AT is where FilmBackdrop brings the veil up, so the copy below never
+ * has to hold contrast against moving line-work.
  */
 const FILM_END = 0.7;
 const SETTLE_AT = 0.8;
 
-/** Captions, timed against the film so each lands as its part of the machine passes. */
+/**
+ * Captions, timed against the film so each lands as its part of the machine
+ * passes. They span nearly the whole pin now: the pin is a fraction of what it
+ * was, and on the old windows four captions inside 0.26-0.84 of it would have
+ * flashed past faster than they can be read.
+ */
 const CHAPTER_WINDOWS: Array<[number, number]> = [
-  [0.26, 0.39],
-  [0.41, 0.54],
-  [0.55, 0.67],
-  [0.69, 0.84],   // the head — arrives on the last frame and reads through the hold
+  [0.20, 0.37],
+  [0.39, 0.56],
+  [0.58, 0.74],
+  [0.76, 0.93],
 ];
 
 const line = {
@@ -59,7 +65,7 @@ const CHAPTERS = [
     body: 'It falls as the car rises, so the motor only moves the difference.',
   },
   { label: 'Head', body: 'Gearless traction machine and sheave, at the top of the shaft.' },
-];
+].map((c) => ({ ...c, words: c.body.split(' ') }));
 
 export default function Hero() {
   const root = useRef<HTMLElement>(null);
@@ -105,12 +111,48 @@ export default function Hero() {
         tl.to(q('[data-hero-rail]'), { opacity: 0, ease: 'none', duration: 0.06 }, SETTLE_AT);
       }
 
-      // captions ride with the car — each one arrives as its part of the
-      // machine passes, and leaves before the next
+      /**
+       * Captions ride with the car — each arrives as its part of the machine
+       * passes, and leaves before the next.
+       *
+       * The line assembles itself a word at a time out of its own mask rather
+       * than fading in as a block: every word sits in an overflow-hidden box
+       * and swings up from under it, staggered. Same idea as Rise, rebuilt on
+       * the GSAP timeline because these are scrubbed against scroll rather
+       * than played on viewport entry — the two would fight over the same
+       * elements if Rise were dropped in here.
+       *
+       * The stagger is deliberately short. It is scrubbed, so a long one would
+       * mean the tail of the sentence is still arriving while you are already
+       * reading the head of it.
+       */
       q('[data-hero-chapter]').forEach((el, i) => {
         const [inAt, outAt] = CHAPTER_WINDOWS[i] ?? [0, 0];
-        tl.fromTo(el, { opacity: 0, y: 14 }, { opacity: 1, y: 0, ease: 'none', duration: 0.05 }, inAt);
-        tl.to(el, { opacity: 0, y: -14, ease: 'none', duration: 0.05 }, outAt);
+        const label = el.querySelector('[data-cap-label]');
+        const words = el.querySelectorAll('[data-cap-word]');
+
+        tl.set(el, { opacity: 1 }, inAt);
+        if (label) {
+          tl.fromTo(label, { opacity: 0, y: 12 }, { opacity: 1, y: 0, ease: 'power2.out', duration: 0.035 }, inAt);
+        }
+        /**
+         * `amount`, not a per-word delay. A per-word stagger makes the cascade
+         * as long as the sentence: at 0.010 each, a twelve-word caption ran
+         * 0.21 of the pin against a window only 0.17 wide, so its last words
+         * were still climbing out of their masks when the caption began to
+         * leave — permanently half-clipped. `amount` spreads a fixed total
+         * across however many words there are, so every caption lands in the
+         * same time and the longest one still finishes well inside its window.
+         */
+        tl.fromTo(
+          words,
+          { yPercent: 118 },
+          { yPercent: 0, ease: 'power3.out', duration: 0.045, stagger: { amount: 0.035 } },
+          inAt + 0.010,
+        );
+        // out as one piece — a staggered exit reads as hesitation
+        tl.to(el, { opacity: 0, y: -22, ease: 'power2.in', duration: 0.05 }, outAt);
+        tl.set(el, { y: 0 }, outAt + 0.05);
       });
 
       ScrollTrigger.refresh();
@@ -122,15 +164,15 @@ export default function Hero() {
     };
 
     /* ---- desktop: the long ride, with the instrumentation --------------- */
-    mm.add(SCROLL_OK, ride({ end: '+=700%', scrub: 0.6, rail: true }));
+    mm.add(SCROLL_OK, ride({ end: '+=250%', scrub: 0.6, rail: true }));
 
     /**
      * ---- phones: the same ride, shorter and tighter ---------------------
-     * Every screen of pin is a thumb-stroke, and seven of them is a chore. The
+     * Every screen of pin is a thumb-stroke, so a phone gets fewer. The
      * travel rail stays desktop-only, since it lives in the right gutter and a
      * phone has no gutter to spare, but the captions run here too.
      */
-    mm.add(TOUCH_SCROLL_OK, ride({ end: '+=380%', scrub: 0.4, rail: false }));
+    mm.add(TOUCH_SCROLL_OK, ride({ end: '+=200%', scrub: 0.4, rail: false }));
 
     // Reduced motion matches neither branch: nothing pins and nothing moves.
   }, root);
@@ -152,11 +194,14 @@ export default function Hero() {
           className="pointer-events-none absolute inset-x-0 top-0 h-[54%]
                      bg-gradient-to-b from-ground via-ground/70 to-transparent"
         />
-        {/* and one at the foot, so the captions have something to sit on */}
+        {/* And one at the foot, so the captions have something to sit on. It
+            reaches to 46% because the captions now sit higher and run to three
+            lines at d2 — at the old 26% the top of a tall caption cleared the
+            scrim entirely and sat on bare line-work. */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 bottom-0 h-[26%]
-                     bg-gradient-to-t from-ground/75 to-transparent"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-[46%]
+                     bg-gradient-to-t from-ground/85 via-ground/55 to-transparent"
         />
 
         {/* ---- instrumentation: only where there is room for it ------------- */}
@@ -179,22 +224,43 @@ export default function Hero() {
           </span>
         </div>
 
-        {/* Captions, arriving as their part of the machine passes. The fixed
-            height reserves room for the tallest of them, so a two-line caption
-            following a one-line caption does not shift the block. */}
+        {/* Captions, arriving as their part of the machine passes.
+            Centred and set large — they are the argument the pin exists to
+            make, so they read as titles over the film rather than as a
+            footnote in the corner. The fixed height reserves room for the
+            tallest of them, so a three-line caption following a one-line
+            caption does not shift the block. */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 bottom-[6%] md:bottom-[9%]"
+          className="pointer-events-none absolute inset-x-0 bottom-[13%] md:bottom-[15%]"
         >
           <div className="mx-auto w-full max-w-[var(--container-content)] px-7 md:px-[var(--gutter)]">
-            <div className="relative h-[104px] max-w-[32ch] md:h-[92px] md:max-w-[40ch]">
+            <div className="relative mx-auto h-[164px] max-w-[26ch] text-center
+                            md:h-[176px] md:max-w-[34ch]">
               {CHAPTERS.map((c, i) => (
                 <div key={c.label} data-hero-chapter className="absolute inset-x-0 top-0 opacity-0">
-                  <span className="text-util uppercase tracking-[0.08em] text-green">
+                  <span
+                    data-cap-label
+                    className="text-util uppercase tracking-[0.24em] text-green"
+                  >
                     {String(i + 1).padStart(2, '0')} · {c.label}
                   </span>
-                  <p className="mt-3 text-[1.0625rem] leading-[1.3] text-white/85 md:text-d4">
-                    {c.body}
+                  {/* Each word gets its own mask to rise out of. The box is
+                      extended a fraction of an em downward and pulled back by
+                      the same amount in margin, so descenders have somewhere
+                      to be without the line gaining height. */}
+                  <p className="mt-5 text-balance text-[1.45rem] leading-[1.25] tracking-[-0.02em]
+                                text-white md:mt-6 md:text-d3 md:leading-[1.2] lg:text-[2.5rem]">
+                    {c.words.map((word, wi) => (
+                      <Fragment key={`${word}-${wi}`}>
+                        <span className="inline-block overflow-hidden align-bottom pb-[0.13em] -mb-[0.13em]">
+                          <span data-cap-word className="inline-block">{word}</span>
+                        </span>
+                        {/* the space is a sibling of the mask, never inside it —
+                            inside, it is clipped and every word runs together */}
+                        {wi < c.words.length - 1 ? ' ' : null}
+                      </Fragment>
+                    ))}
                   </p>
                 </div>
               ))}

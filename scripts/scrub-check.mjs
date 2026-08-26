@@ -131,14 +131,23 @@ for (const r of rows) {
  * disappearing. Both of those are deliberate, so checks written against the
  * old behaviour were reporting on themselves rather than on the page.
  */
-const HERO_SHARE = 0.85;
+const HERO_SHARE = 0.3;
 const VEIL_MAX = 0.68;
 /** the film must still be visible once settled, not merely present in the DOM */
 const MIN_PRESENT = 0.15;
 
 const pinnedRows = rows.filter((r) => Math.abs(r.heroTop) <= 1);
 const pinReleases = pinnedRows.length ? pinnedRows[pinnedRows.length - 1].scroll + STEP : 0;
-const atRelease = pinnedRows.length ? pinnedRows[pinnedRows.length - 1] : null;
+/**
+ * Measure at the first sample PAST the release, not the last one still pinned.
+ * The sweep steps in chunks, so the last pinned row sits up to a full step
+ * before the pin actually lets go and reads a frame that has not caught up
+ * yet. Comparing that against the value expected AT the release made this fail
+ * by a fifth of a frame on mobile and scrape through on desktop — a difference
+ * in sample alignment, not in behaviour.
+ */
+const lastPinnedIdx = rows.findIndex((r) => r === pinnedRows[pinnedRows.length - 1]);
+const atRelease = pinnedRows.length ? (rows[lastPinnedIdx + 1] ?? pinnedRows[pinnedRows.length - 1]) : null;
 const last = rows[rows.length - 1];
 const filmDone = rows.find((r) => r.frame >= LAST);
 const settled = rows.find((r) => r.veil > 0.5 && r.blur > 2);
