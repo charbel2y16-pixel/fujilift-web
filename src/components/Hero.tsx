@@ -32,13 +32,23 @@ import { gsap, ScrollTrigger, useGsap, SCROLL_OK, TOUCH_SCROLL_OK } from '@/lib/
  */
 
 /**
- * Two cuts of the same film. Desktop paints the 1600px sequence; phones get a
- * 900px, 64-frame cut — 1.4 MB against the 8.9 MB the MP4 used to cost, and a
- * quarter of the decoded bitmap for a phone to hold on to.
+ * Two cuts of the same film. Desktop paints the 1400px sequence; phones get a
+ * 900px cut — 2.1 MB against the 8.9 MB the MP4 used to cost.
+ *
+ * WHY THESE COUNTS. The master is 8s at 24fps, so 192 distinct frames exist;
+ * this used to take 96 of them and throw the rest away. The ride is now worth
+ * roughly twice the scroll it was, and frame density is what stops a longer
+ * pin reading as a slideshow — so desktop takes 128 and the phone 96, which
+ * holds ~26 and ~36 frames per viewport of scroll respectively.
+ *
+ * Width came down from 1600 to 1400 to pay for it. Every frame is held as a
+ * decoded bitmap while the ride is on screen, and 128 frames at 1600 would be
+ * ~700 MB of them; at 1400 it is ~540 MB, which is what the 96-frame cut
+ * already cost. More frames, same memory.
  */
 const SEQ = {
-  lg: { count: 96, dir: 'seq' },
-  sm: { count: 64, dir: 'seq-sm' },
+  lg: { count: 128, dir: 'seq' },
+  sm: { count: 96, dir: 'seq-sm' },
 } as const;
 
 type Seq = (typeof SEQ)[keyof typeof SEQ];
@@ -286,16 +296,17 @@ export default function Hero() {
     };
 
     /* ---- desktop: the long ride, with the instrumentation --------------- */
-    mm.add(SCROLL_OK, ride({ seq: SEQ.lg, end: '+=360%', scrub: 0.6, rail: true }));
+    mm.add(SCROLL_OK, ride({ seq: SEQ.lg, end: '+=700%', scrub: 0.6, rail: true }));
 
     /**
      * ---- phones: the same ride, shorter and tighter ---------------------
-     * 220% rather than 360%, because three and a half screens of pin is a lot
-     * of thumb, and a shorter scrub because a touch flick moves faster than a
-     * wheel. The travel rail stays desktop-only — it lives in the right gutter,
-     * and a phone has no gutter to spare — but the captions run here too.
+     * A phone still gets a shorter pin than desktop's 700% — every screen of
+     * pin is a thumb-stroke, and seven of them is a chore — and a shorter
+     * scrub, because a touch flick moves faster than a wheel. The travel rail
+     * stays desktop-only, since it lives in the right gutter and a phone has
+     * no gutter to spare, but the captions run here too.
      */
-    mm.add(TOUCH_SCROLL_OK, ride({ seq: SEQ.sm, end: '+=220%', scrub: 0.4, rail: false }));
+    mm.add(TOUCH_SCROLL_OK, ride({ seq: SEQ.sm, end: '+=380%', scrub: 0.4, rail: false }));
 
     // Reduced motion matches neither branch: the poster stays and no frame is
     // ever fetched.

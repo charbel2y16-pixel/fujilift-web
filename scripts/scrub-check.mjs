@@ -35,21 +35,37 @@ page.on('request', (r) => {
 await page.goto(url, { waitUntil: 'networkidle' });
 await page.waitForTimeout(6000);
 
-const meta = await page.evaluate(() => ({
-  frames: Number(document.querySelector('canvas')?.dataset.total ?? 0),
-  pageHeight: document.body.scrollHeight,
-  viewport: window.innerHeight,
-}));
+const meta = await page.evaluate(() => {
+  /**
+   * Measure the pin rather than assuming it. GSAP wraps a pinned element in a
+   * .pin-spacer whose extra height over the element is exactly the scroll the
+   * pin is worth, so the sweep can cover whatever the hero is currently set to
+   * — this used to be hardcoded at five viewports, which silently stopped
+   * short once the pin grew past that and reported the dissolve as missing.
+   */
+  const hero = document.querySelector('section[aria-label="Introduction"]');
+  const spacer = hero?.closest('.pin-spacer');
+  const pin = spacer ? spacer.offsetHeight - hero.offsetHeight : 0;
+  return {
+    frames: Number(document.querySelector('canvas')?.dataset.total ?? 0),
+    pageHeight: document.body.scrollHeight,
+    viewport: window.innerHeight,
+    pin,
+  };
+});
 
 console.log(
   `${mobile ? 'MOBILE' : 'DESKTOP'} ${VIEWPORT.width}x${VIEWPORT.height} · ` +
   `page ${meta.pageHeight}px · ${meta.frames} frames · ` +
+  `pin ${meta.pin}px (${(meta.pin / meta.viewport).toFixed(1)} screens) · ` +
   `fetched [${[...seqRequests].join(', ')}]`,
 );
 
 const LAST = meta.frames - 1;
-const STEP = Math.round(meta.viewport / 4);
-const MAX = meta.viewport * 5;
+// cover the whole pin plus a screen and a half of release
+const SWEEP = (meta.pin || meta.viewport * 4) + meta.viewport * 1.5;
+const STEP = Math.round(SWEEP / 26);
+const MAX = Math.round(SWEEP);
 
 const rows = [];
 for (let y = 0; y <= MAX; y += STEP) {
