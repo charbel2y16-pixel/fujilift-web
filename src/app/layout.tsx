@@ -3,6 +3,7 @@ import { Inter, Inter_Tight } from 'next/font/google';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import SmoothScroll from '@/components/SmoothScroll';
+import FilmBackdrop from '@/components/FilmBackdrop';
 import BuildingShaft from '@/components/BuildingShaft';
 import FloorIndicator from '@/components/FloorIndicator';
 import Cursor from '@/components/Cursor';
@@ -62,6 +63,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           Skip to content
         </a>
         <SmoothScroll />
+        {/* The shaft, behind everything, from the masthead to the footer. Both
+            sit at z-0 and <main> is z-10; DOM order puts the rails over the
+            film. */}
+        <FilmBackdrop />
         <BuildingShaft />
         <Header />
         <main

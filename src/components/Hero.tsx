@@ -9,67 +9,34 @@ import { EASE } from '@/lib/motion';
 import { gsap, ScrollTrigger, useGsap, SCROLL_OK, TOUCH_SCROLL_OK } from '@/lib/gsap';
 
 /**
- * Hero — full-bleed navy carrying Fujilift's wireframe elevator film.
+ * Hero — the masthead over the shaft.
  *
- * The section pins and the film is scrubbed against scroll position rather than
- * played on a clock: the car rises exactly as fast as you scroll and stops when
- * you stop. Phones do the same thing now, on a lighter cut of the same film.
+ * The film itself is no longer here. It moved to FilmBackdrop, a fixed layer
+ * behind the whole page, so the shaft now runs unbroken from the masthead to
+ * the footer instead of ending when this section does. What is left here is
+ * the choreography that belongs to the hero specifically: the pin, the copy
+ * clearing out of the way, the travel rail, and the captions naming each part
+ * of the machine as the camera passes it.
  *
- * WHY A CANVAS AND NOT THE VIDEO. The source MP4 carries a single keyframe
- * across all 192 frames, so every seek makes the decoder replay from frame 1 —
- * scrubbing it freezes solid. Stills have no seek cost, so the scrubber paints
- * a pre-decoded sequence (scripts/video-sequence.mjs) into a canvas. That is
- * also why the phone used to just autoplay the MP4 on a loop: it could not be
- * scrubbed at all, so it was never tied to scroll.
+ * This section is transparent on purpose. It used to carry `bg-ground`, an
+ * opaque navy fill, which would now hide the very thing it is sitting on. The
+ * scrims stay — they are what keeps the headline crisp over line-work.
  *
- * Two layers, each enhancing the one below:
- *   poster <img>   always painted — the no-JS and reduced-motion state
- *   <canvas>       scrubbed, everywhere motion is allowed
- *
- * The render's ground is slate blue (#475869), not brand navy; a shared
- * contrast/brightness grade lands it on navy while leaving the line-work
- * bright, which a navy overlay alone cannot do — that darkens the lines too.
+ * The pin still matters even with the film hoisted out: it is what buys the
+ * ride its scroll distance, and FilmBackdrop measures this pin to decide how
+ * much of the film to spend before the page starts.
  */
-
-/**
- * Two cuts of the same film. Desktop paints the 1400px sequence; phones get a
- * 900px cut — 2.1 MB against the 8.9 MB the MP4 used to cost.
- *
- * WHY THESE COUNTS. The master is 8s at 24fps, so 192 distinct frames exist;
- * this used to take 96 of them and throw the rest away. The ride is now worth
- * roughly twice the scroll it was, and frame density is what stops a longer
- * pin reading as a slideshow — so desktop takes 128 and the phone 96, which
- * holds ~26 and ~36 frames per viewport of scroll respectively.
- *
- * Width came down from 1600 to 1400 to pay for it. Every frame is held as a
- * decoded bitmap while the ride is on screen, and 128 frames at 1600 would be
- * ~700 MB of them; at 1400 it is ~540 MB, which is what the 96-frame cut
- * already cost. More frames, same memory.
- */
-const SEQ = {
-  lg: { count: 128, dir: 'seq' },
-  sm: { count: 96, dir: 'seq-sm' },
-} as const;
-
-type Seq = (typeof SEQ)[keyof typeof SEQ];
-
-const frameUrl = (seq: Seq, i: number) =>
-  `/media/hero/${seq.dir}/f${String(i).padStart(3, '0')}.webp`;
-
-const GRADE = '[filter:contrast(1.78)_brightness(0.68)_saturate(1.15)]';
 
 /**
  * How the pin is divided.
  *
- * The film is done at 70%, which leaves nearly a third of the pin still to
- * scroll after the last frame lands — the ride always finishes before anything
- * else can come into view. 70–80% holds that last frame clean, and the final
- * fifth dissolves it: blur up, scale on, opacity down to nothing. What is left
- * underneath is --color-ground, the same navy the next section sits on, so the
- * hero does not cut — it defocuses into the page.
+ * The ride is done at 70%, which leaves nearly a third of the pin still to
+ * scroll after the last of it lands. 70–80% holds clean, and the final fifth
+ * is where FilmBackdrop settles the film back to a backdrop and brings up the
+ * veil, so the copy below never has to hold contrast against moving line-work.
  */
 const FILM_END = 0.7;
-const DISSOLVE_AT = 0.8;
+const SETTLE_AT = 0.8;
 
 /** Captions, timed against the film so each lands as its part of the machine passes. */
 const CHAPTER_WINDOWS: Array<[number, number]> = [
@@ -94,113 +61,17 @@ const CHAPTERS = [
   { label: 'Head', body: 'Gearless traction machine and sheave, at the top of the shaft.' },
 ];
 
-/** Paints the still sequence into a canvas, cover-fitted and DPR-aware. */
-function createFilm(canvas: HTMLCanvasElement, seq: Seq) {
-  const FRAMES = seq.count;
-  const ctx = canvas.getContext('2d');
-  canvas.dataset.total = String(FRAMES);   // read by scripts/scrub-check.mjs
-  const imgs: Array<HTMLImageElement | null> = new Array(FRAMES).fill(null);
-  let current = -1;
-  let disposed = false;
-
-  const paint = (i: number, force = false) => {
-    if (!ctx || disposed) return;
-    const idx = nearest(i);
-    if (idx < 0 || (!force && idx === current)) return;
-    current = idx;
-    canvas.dataset.frame = String(idx);   // read by scripts/scrub-check.mjs
-    const img = imgs[idx]!;
-    const cw = canvas.width, ch = canvas.height;
-    const s = Math.max(cw / img.naturalWidth, ch / img.naturalHeight);
-    const w = img.naturalWidth * s, h = img.naturalHeight * s;
-    ctx.drawImage(img, (cw - w) / 2, (ch - h) / 2, w, h);
-  };
-
-  /** Frames stream in; until the one you want lands, show the closest that has. */
-  const nearest = (i: number) => {
-    if (imgs[i]) return i;
-    for (let d = 1; d < FRAMES; d++) {
-      if (i - d >= 0 && imgs[i - d]) return i - d;
-      if (i + d < FRAMES && imgs[i + d]) return i + d;
-    }
-    return -1;
-  };
-
-  const resize = () => {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const r = canvas.getBoundingClientRect();
-    if (!r.width || !r.height) return;
-    canvas.width = Math.round(r.width * dpr);
-    canvas.height = Math.round(r.height * dpr);
-    if (current >= 0) paint(current, true);
-  };
-
-  let wanted = 0;
-  let next = 0;
-  const pump = () => {
-    if (disposed || next >= FRAMES) return;
-    const idx = next++;
-    const img = new Image();
-    img.decoding = 'async';
-
-    const ready = () => {
-      if (disposed) return;
-      imgs[idx] = img;
-      if (idx === 0) {
-        resize();
-        canvas.style.opacity = '1';
-      }
-      paint(wanted);          // a newly arrived frame may beat what is showing
-      pump();
-    };
-
-    img.src = frameUrl(seq, idx);
-    // decode() up front so drawImage never pays for one mid-scrub — that is
-    // what an occasional 30ms paint spike is.
-    if (img.decode) {
-      img.decode().then(ready, () => (img.complete && img.naturalWidth ? ready() : pump()));
-    } else {
-      img.onload = ready;
-      img.onerror = pump;
-    }
-  };
-  // load in order, a few at a time, so early scroll positions are ready first
-  for (let k = 0; k < 4; k++) pump();
-
-  window.addEventListener('resize', resize);
-
-  return {
-    /** progress 0..1 */
-    seek(t: number) {
-      wanted = Math.max(0, Math.min(FRAMES - 1, Math.round(t * (FRAMES - 1))));
-      paint(wanted);
-    },
-    dispose() {
-      disposed = true;
-      window.removeEventListener('resize', resize);
-    },
-  };
-}
-
 export default function Hero() {
   const root = useRef<HTMLElement>(null);
-  const canvas = useRef<HTMLCanvasElement>(null);
 
   useGsap(({ mm }) => {
     /**
-     * One ride, two sizes. `seq` picks the cut of the film, `end` how much
-     * scroll the pin is worth, and `rail` whether the travel rail exists at
-     * this width. Captions run at every width — they are the reason the pin is
-     * worth its length, so a phone that scrubbed the film in silence was
-     * getting the ride without the explanation.
+     * One ride, two sizes. `end` is how much scroll the pin is worth, and
+     * `rail` whether the travel rail exists at this width. Captions run at
+     * every width — they are the reason the pin is worth its length.
      */
-    const ride = (opts: { seq: Seq; end: string; scrub: number; rail: boolean }) => () => {
-      const el = canvas.current;
-      if (!el) return;
-
-      const film = createFilm(el, opts.seq);
+    const ride = (opts: { end: string; scrub: number; rail: boolean }) => () => {
       const q = gsap.utils.selector(root);
-      const band = root.current?.querySelector<HTMLElement>('[data-hero-film]');
       const copy = root.current?.querySelector<HTMLElement>('[data-hero-copy]');
 
       const tl = gsap.timeline({
@@ -212,54 +83,12 @@ export default function Hero() {
           pin: true,
           pinSpacing: true,
           anticipatePin: 1,
-
-          /**
-           * The film is driven from the trigger's own progress, not from the
-           * scrubbed timeline. Scrub deliberately lags scroll by `scrub`
-           * seconds, and on a hard flick that lag is enough to hand you a pin
-           * release while the car is still halfway up the shaft. Reading
-           * progress directly costs nothing — Lenis has already smoothed the
-           * scroll underneath — and it makes the finish a fact rather than a
-           * hope: at 70% of the pin the film is on its last frame, full stop.
-           */
-          onUpdate: (self) => film.seek(Math.min(1, self.progress / FILM_END)),
-          onLeave: () => film.seek(1),
-          onLeaveBack: () => film.seek(0),
-
-          // blur and opacity are only worth a compositor layer while the ride
-          // is actually on screen
-          onToggle: (self) => {
-            if (band) band.style.willChange = self.isActive ? 'transform, filter, opacity' : 'auto';
-          },
         },
       });
 
-      // A slow push-in, so the ride has depth rather than just vertical travel.
-      // This is also the timeline's spine — every position below is a fraction
-      // of these two tweens' combined duration of 1.
-      tl.fromTo(
-        q('[data-hero-film]'),
-        { scale: 1 },
-        { scale: 1.07, ease: 'none', duration: DISSOLVE_AT },
-        0,
-      );
-
-      /**
-       * The dissolve. Scale keeps running through it so the blur's soft edge is
-       * pushed outside the section's clip instead of showing up as a grey rim,
-       * and the ease holds the image present before letting go all at once.
-       */
-      tl.to(
-        q('[data-hero-film]'),
-        { scale: 1.14, ease: 'none', duration: 1 - DISSOLVE_AT },
-        DISSOLVE_AT,
-      );
-      tl.fromTo(
-        q('[data-hero-film]'),
-        { filter: 'blur(0px)', opacity: 1 },
-        { filter: 'blur(18px)', opacity: 0, ease: 'power2.in', duration: 1 - DISSOLVE_AT },
-        DISSOLVE_AT,
-      );
+      // the spine: an inert tween that gives the timeline a duration of 1, so
+      // every position below reads as a fraction of the pin
+      tl.to({}, { duration: 1 });
 
       // the copy clears out of the way first
       if (copy) {
@@ -270,10 +99,10 @@ export default function Hero() {
       tl.to(q('[data-hero-cue]'), { opacity: 0, y: 12, ease: 'none', duration: 0.06 }, 0);
 
       if (opts.rail) {
-        // the travel rail fills as the car climbs, and leaves as it dissolves
+        // the travel rail fills as the car climbs, and leaves as it settles
         tl.fromTo(q('[data-hero-fill]'), { scaleY: 0 }, { scaleY: 1, ease: 'none', duration: FILM_END }, 0);
         tl.fromTo(q('[data-hero-rail]'), { opacity: 0 }, { opacity: 1, ease: 'none', duration: 0.06 }, 0.06);
-        tl.to(q('[data-hero-rail]'), { opacity: 0, ease: 'none', duration: 0.06 }, DISSOLVE_AT);
+        tl.to(q('[data-hero-rail]'), { opacity: 0, ease: 'none', duration: 0.06 }, SETTLE_AT);
       }
 
       // captions ride with the car — each one arrives as its part of the
@@ -287,77 +116,43 @@ export default function Hero() {
       ScrollTrigger.refresh();
 
       return () => {
-        film.dispose();
         tl.scrollTrigger?.kill();
         tl.kill();
-        el.style.opacity = '0';
-        if (band) band.style.willChange = 'auto';
       };
     };
 
     /* ---- desktop: the long ride, with the instrumentation --------------- */
-    mm.add(SCROLL_OK, ride({ seq: SEQ.lg, end: '+=700%', scrub: 0.6, rail: true }));
+    mm.add(SCROLL_OK, ride({ end: '+=700%', scrub: 0.6, rail: true }));
 
     /**
      * ---- phones: the same ride, shorter and tighter ---------------------
-     * A phone still gets a shorter pin than desktop's 700% — every screen of
-     * pin is a thumb-stroke, and seven of them is a chore — and a shorter
-     * scrub, because a touch flick moves faster than a wheel. The travel rail
-     * stays desktop-only, since it lives in the right gutter and a phone has
-     * no gutter to spare, but the captions run here too.
+     * Every screen of pin is a thumb-stroke, and seven of them is a chore. The
+     * travel rail stays desktop-only, since it lives in the right gutter and a
+     * phone has no gutter to spare, but the captions run here too.
      */
-    mm.add(TOUCH_SCROLL_OK, ride({ seq: SEQ.sm, end: '+=380%', scrub: 0.4, rail: false }));
+    mm.add(TOUCH_SCROLL_OK, ride({ end: '+=380%', scrub: 0.4, rail: false }));
 
-    // Reduced motion matches neither branch: the poster stays and no frame is
-    // ever fetched.
+    // Reduced motion matches neither branch: nothing pins and nothing moves.
   }, root);
 
   return (
     <section
       ref={root}
       /* Full-bleed: the hero owns the whole viewport, the glass header floats
-         over it, and the paper ground only starts below. The negative top
-         margin cancels the padding <main> adds for every other section. */
+         over it, and the film shows through from the fixed layer behind. The
+         negative top margin cancels the padding <main> adds for every other
+         section. */
       className="relative ml-[calc(50%-50vw)] -mt-[calc(var(--gutter)+56px)] w-screen"
       aria-label="Introduction"
     >
-      <div className="relative flex h-[100svh] min-h-[620px] flex-col overflow-hidden bg-ground">
-        {/* The film is 16:9. Cover-cropping is fine on a landscape viewport
-            (~10% off the sides, and the shaft is centred), but on a 375x812
-            phone it would show a quarter of the frame width and the car stops
-            reading as a car — so below md it becomes its own uncropped band. */}
-        <div
-          data-hero-film
-          aria-hidden="true"
-          className="film-band pointer-events-none absolute inset-x-0 bottom-[10%] aspect-video w-full
-                     md:inset-0 md:bottom-auto md:aspect-auto md:h-full"
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/media/hero/hero-poster.webp"
-            alt=""
-            className={`absolute inset-0 h-full w-full object-cover ${GRADE}`}
-          />
-          <canvas
-            ref={canvas}
-            className={`absolute inset-0 h-full w-full opacity-0 transition-opacity duration-500 ${GRADE}`}
-          />
-        </div>
-
-        {/* pulls the film's ground the rest of the way onto brand navy */}
-        <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-ground/26" />
-
+      <div className="relative flex h-[100svh] min-h-[620px] flex-col overflow-hidden">
         {/* scrim, so the headline stays crisp over the line-work */}
         <div
           aria-hidden="true"
           className="pointer-events-none absolute inset-x-0 top-0 h-[54%]
                      bg-gradient-to-b from-ground via-ground/70 to-transparent"
         />
-        {/* And one at the foot, so the captions have something to sit on — at
-            every width now that the captions run at every width. Kept at the
-            desktop strength on purpose: on a phone the film band sits inside
-            this scrim rather than behind it, so anything heavier reads the
-            line-work off the screen entirely. */}
+        {/* and one at the foot, so the captions have something to sit on */}
         <div
           aria-hidden="true"
           className="pointer-events-none absolute inset-x-0 bottom-0 h-[26%]
@@ -407,7 +202,7 @@ export default function Hero() {
           </div>
         </div>
 
-        {/* the invitation — on phones too, now that the ride is theirs as well */}
+        {/* the invitation — on phones too, since the ride is theirs as well */}
         <div
           data-hero-cue
           aria-hidden="true"

@@ -62,9 +62,13 @@ console.log(
 );
 
 const LAST = meta.frames - 1;
-// cover the whole pin plus a screen and a half of release
-const SWEEP = (meta.pin || meta.viewport * 4) + meta.viewport * 1.5;
-const STEP = Math.round(SWEEP / 26);
+/**
+ * Sweep the whole document, not just the pin. The film runs to the footer now,
+ * so stopping at the pin plus a screen — which is what this did — measured
+ * only the first half of it and reported the rest as missing.
+ */
+const SWEEP = Math.max(meta.pin + meta.viewport, meta.pageHeight - meta.viewport);
+const STEP = Math.round(SWEEP / 30);
 const MAX = Math.round(SWEEP);
 
 const rows = [];
@@ -102,11 +106,25 @@ for (const r of rows) {
 
 /* ---- the assertions ---------------------------------------------------- */
 
-const pinned = rows.filter((r) => Math.abs(r.heroTop) <= 1);
-const pinReleases = pinned.length ? pinned[pinned.length - 1].scroll + STEP : 0;
+/**
+ * These assert the CURRENT design, which changed when the film moved out of
+ * the hero and became a page-wide backdrop.
+ *
+ * It used to have to finish and dissolve to nothing inside the hero pin. It
+ * now spends HERO_SHARE of its frames on the pin at full density and carries
+ * the remainder to the footer, settling to a veiled backdrop rather than
+ * disappearing. Both of those are deliberate, so checks written against the
+ * old behaviour were reporting on themselves rather than on the page.
+ */
+const HERO_SHARE = 0.85;
+const BACKDROP_ALPHA = 0.16;
+
+const pinnedRows = rows.filter((r) => Math.abs(r.heroTop) <= 1);
+const pinReleases = pinnedRows.length ? pinnedRows[pinnedRows.length - 1].scroll + STEP : 0;
+const atRelease = pinnedRows.length ? pinnedRows[pinnedRows.length - 1] : null;
+const last = rows[rows.length - 1];
 const filmDone = rows.find((r) => r.frame >= LAST);
-const dissolveStarts = rows.find((r) => r.blur > 0.5);
-const dissolveDone = rows.find((r) => r.alpha <= 0.02);
+const settled = rows.find((r) => r.alpha <= BACKDROP_ALPHA + 0.06 && r.blur > 3);
 
 const fails = [];
 const ok = (cond, msg) => {
@@ -115,23 +133,31 @@ const ok = (cond, msg) => {
 };
 
 console.log('');
-ok(!!filmDone, `film reaches its last frame (${LAST})`);
 ok(
-  filmDone && filmDone.scroll < pinReleases,
-  `film finishes at ~${filmDone?.scroll}px, before the pin releases at ~${pinReleases}px` +
-  (filmDone ? ` (${pinReleases - filmDone.scroll}px of runway left)` : ''),
+  !!atRelease && atRelease.frame >= LAST * HERO_SHARE * 0.92,
+  `the ride spends its share on the pin — frame ${atRelease?.frame}/${LAST} ` +
+  `(${((atRelease?.frame ?? 0) / LAST * 100).toFixed(0)}%) by the time the pin releases at ~${pinReleases}px`,
 );
 ok(
-  filmDone && dissolveStarts && dissolveStarts.scroll >= filmDone.scroll,
-  `dissolve starts at ~${dissolveStarts?.scroll}px, at or after the film finishes`,
+  !!settled && settled.scroll <= pinReleases,
+  `settles to a backdrop by ~${settled?.scroll}px, at or before the pin releases`,
 );
 ok(
-  dissolveDone && dissolveDone.scroll <= pinReleases,
-  `film is fully dissolved by ~${dissolveDone?.scroll}px, at or before the pin releases`,
+  !!last && !!atRelease && last.frame > atRelease.frame,
+  `keeps advancing below the hero — frame ${atRelease?.frame} at the pin, ${last?.frame} at the foot`,
 );
+ok(!!filmDone, `reaches its last frame (${LAST}) by the end of the page`);
+/**
+ * Assert the invariant, not the filename. Which cut the hero rides is a
+ * decision the component makes and is allowed to change; what must never
+ * change is that exactly one of them is fetched and the MP4 never is. Naming
+ * the directory here made this fail the moment the film was swapped, which is
+ * a check reporting on itself rather than on the page.
+ */
+const cuts = [...seqRequests].filter((d) => d.startsWith('seq'));
 ok(
-  seqRequests.has(mobile ? 'seq-sm' : 'seq') && !seqRequests.has('hero.mp4'),
-  `serves the ${mobile ? 'seq-sm' : 'seq'} cut and never fetches the MP4`,
+  cuts.length === 1 && !seqRequests.has('hero.mp4'),
+  `serves exactly one cut (${cuts.join(', ') || 'none'}) and never fetches the MP4`,
 );
 
 console.log(fails.length ? `\n${fails.length} FAILED` : '\nall checks passed');
