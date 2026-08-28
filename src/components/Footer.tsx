@@ -153,12 +153,13 @@ export default function Footer() {
         </div>
 
         {/* ---------------------------------------------- closing wordmark */}
-        {/* Full width, not oversized. It used to run to 124% and hang off both
-           edges, which read as a crop rather than a flourish — the name was
-           the one thing on the page you could not read in full. overflow-hidden
-           stays: it is what masks the 60px rise, not a horizontal crop. */}
+        {/* Sized to sign off, not to shout. It ran to 124% and hung off both
+           edges — the name was the one thing on the page you could not read in
+           full — and at 100% it simply swapped one problem for another, 450px
+           of letterform closing the page. overflow-hidden stays: it is what
+           masks the 60px rise, and was never the horizontal crop. */}
         <div className="mt-10 overflow-hidden md:mt-14">
-          <div data-footer-mark className="w-full">
+          <div data-footer-mark className="w-[86%] md:w-[58%]">
             <LogoWordmark tone="green" className="block h-auto w-full" aria-hidden="true" />
           </div>
         </div>
