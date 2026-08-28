@@ -24,9 +24,9 @@ const SOCIALS = [
 ];
 
 /**
- * Footer — navy, closing on the oversized wordmark in the brand green, cropped
- * by the card edges. The wordmark rises 60px into place as the footer enters,
- * revealing itself from behind the contact block.
+ * Footer — navy, closing on the wordmark in the brand green, set to the full
+ * width of the card. It rises 60px into place as the footer enters, revealing
+ * itself from behind the contact block.
  */
 export default function Footer() {
   const root = useRef<HTMLElement>(null);
@@ -152,9 +152,13 @@ export default function Footer() {
           </div>
         </div>
 
-        {/* ------------------------------------------- oversized wordmark */}
+        {/* ---------------------------------------------- closing wordmark */}
+        {/* Full width, not oversized. It used to run to 124% and hang off both
+           edges, which read as a crop rather than a flourish — the name was
+           the one thing on the page you could not read in full. overflow-hidden
+           stays: it is what masks the 60px rise, not a horizontal crop. */}
         <div className="mt-10 overflow-hidden md:mt-14">
-          <div data-footer-mark className="w-[124%] -ml-[12%] md:w-[116%] md:-ml-[8%]">
+          <div data-footer-mark className="w-full">
             <LogoWordmark tone="green" className="block h-auto w-full" aria-hidden="true" />
           </div>
         </div>

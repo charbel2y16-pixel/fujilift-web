@@ -32,8 +32,23 @@ import { prefersReducedMotion } from '@/lib/gsap';
 type Seq = { count: number; dir: string };
 
 /**
- * Which film rides. 'house' is the original 8s render; 'alt' is the Seedance
- * generation, 15s, which covers more of the shaft. Flip this one word.
+ * Which film rides. 'house' is the original 8s render; 'alt' is a Kling 3.0
+ * generation grown from a still of the shaft — a car with readable doors dead
+ * centre, climbing past floor after floor to the traction machine. Flip this
+ * one word.
+ *
+ * It took three attempts to get a generated clip that can be scrubbed at all.
+ * Text-only gave six cuts and a camera that reversed fifteen times. Locking
+ * BOTH the first and last frame removed every trace of travel — the two ends
+ * looked alike, so the cheapest path between them was to sit still. Locking
+ * only the first frame is what worked: it pins the drawing and the geometry
+ * and leaves the camera free to climb. Zero cuts, and pacing that never
+ * strays more than 1.22x from its own mean.
+ *
+ * Source clip: Kling 3.0 job 14ce5cbf-62f3-49be-855c-146eb45ea8a7, grown from
+ * a nano-banana still. The MP4 is not in the repo — regenerate the sequences
+ * from the Higgsfield generation with scripts/video-sequence.mjs if the frame
+ * counts or widths ever need to change.
  */
 export const FILM: 'house' | 'alt' = 'alt';
 
@@ -42,34 +57,40 @@ export const FILM: 'house' | 'alt' = 'alt';
  *
  * They did not. `lg` followed FILM while `sm` was hardcoded to a sequence
  * decoded from the house master, so with FILM='alt' a phone showed the old
- * film — and, worse, wore the alt grade while doing it. That grade is solved
- * for the generated render's ground at luma 25; the house render's ground is
- * luma 82, so it came out about three times too bright. Washed out and plainly
- * wrong, and invisible from a desktop browser.
+ * film — and, worse, wore the alt grade while doing it. Each grade is solved
+ * for one film's exposure, and the house render's ground is luma 82 against
+ * the generated one's 33, so mobile came out roughly three times too bright.
+ * Washed out and plainly wrong, and invisible from a desktop browser.
  */
 const SEQ: { lg: Seq; sm: Seq } = {
-  lg: FILM === 'alt' ? { count: 160, dir: 'seq-alt' } : { count: 128, dir: 'seq' },
-  sm: { count: 96, dir: 'seq-sm' },
+  lg: FILM === 'alt' ? { count: 128, dir: 'seq-alt' } : { count: 128, dir: 'seq' },
+  sm: { count: 72, dir: 'seq-sm' },
 };
 
 /**
- * One grade per film, because they are lit nothing like each other.
+ * One grade per film, because no two of them are lit alike.
  *
  *                    ground luma   ground rgb
  *   house render          81.8     rgb(68,84,100)
- *   --color-ground        31.1     rgb(10,35,54)   <- what both must land on
- *   alt render            25.2     rgb(4,28,60)
+ *   --color-ground        31.1     rgb(10,35,54)   <- what every film lands on
+ *   alt render            32.6     rgb(12,36,60)
  *
- * The house render is a light slate blue that has to be pulled a long way
- * down; the generated cut already sits a shade below the target, so the same
- * grade drives its ground to rgb(0,0,5) and takes everything up to the 95th
- * percentile of line-work with it. The alt values are solved, not guessed:
- * they map its ground to 31 luma and its 99th percentile to 81, which is where
- * the house grade lands those same landmarks.
+ * Both sets of values are solved rather than guessed. Pick the contrast and
+ * brightness that map a film's ground to 31 luma and its 99th percentile of
+ * line-work to 81, and every film arrives at the same tonal range no matter
+ * how it started. The house render is a light slate blue that has to be hauled
+ * a long way down; this one already sits within two luma of the target, so its
+ * grade is close to a no-op and only trims. saturate(1.8) is doing real work
+ * though: at 1.0 the graded ground comes out rgb(21,33,44), too grey and too
+ * red against the target, and 1.8 lands it on rgb(13,34,55).
+ *
+ * Getting this wrong is not subtle. Wearing the previous film's grade, this
+ * one would sit at luma 39 — a quarter too bright — lifting the backdrop
+ * behind every paragraph on the site.
  */
 const GRADES = {
   house: 'contrast(1.78) brightness(0.68) saturate(1.15)',
-  alt: 'contrast(0.97) brightness(1.1) saturate(0.85)',
+  alt: 'contrast(0.8) brightness(0.6) saturate(1.8)',
 } as const;
 
 /**
